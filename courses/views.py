@@ -6,9 +6,13 @@ from django.views.generic.list import ListView
 from django.views.generic.edit import CreateView, UpdateView, DeleteView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.views.generic.base import TemplateResponseMixin, View
+from django.views.generic.detail import DetailView
 from .forms import ModuleFormset
 from braces.views import CsrfExemptMixin, JsonRequestResponseMixin
-from .models import Course, Module, Content
+from django.db.models import Count
+from .models import Course, Module, Content, Subject
+from students.forms import CourseEnrollForm
+from django.core.cache import cache
 
 
 # class ManageCourseList(ListView):
@@ -157,3 +161,37 @@ class ContentOrderView(CsrfExemptMixin, JsonRequestResponseMixin, View):
             Content.objects.filter(id=id, module__course__owner=request.user)\
                 .update(order=order)
         return self.render_json_response({'saved': 'OK'})
+
+
+class CourseListView(TemplateResponseMixin, View):
+    model = Course
+    template_name = 'courses/course/list.html'
+
+    def get(self, request, subject=None):
+        subjects = cache.get('all_subjects')
+        if not subjects:
+            subjects = Subject.objects.annotate(total_courses=Count('courses'))
+            cache.set('all_subjects', subjects)
+        all_courses = Course.objects.annotate(total_modules=Count('modules'))
+        if subject:
+            subject = get_object_or_404(Subject, slug=subject)
+            key = f'subject_{subject.id}_course'
+            courses = cache.get(key)
+            if not courses:
+                courses = all_courses.filter(subject=subject)
+                cache.set(key, courses)
+        else:
+            courses = all_courses
+        return self.render_to_response({'subjects': subjects,
+                                        'subject': subject, 'courses': courses})
+
+
+class CourseDetailView(DetailView):
+    model = Course
+    template_name = 'courses/course/detail.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        print(self.get_object().id)
+        context['enroll_form'] = CourseEnrollForm(initial={'course': self.object})
+        return context
