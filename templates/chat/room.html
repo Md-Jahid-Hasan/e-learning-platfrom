@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Chat room for "{{ course.title }}"{% endblock %}
+{% block content %}
+    <div id="chat">
+    {% for m in msg %}
+        {% with sender=m.user %}
+        <div class="message {% if sender == request.user %}me{% else %}other{% endif %}">
+            <strong>{% if sender == request.user %}Me{% else %}{{ user.username }}{% endif %}</strong>
+            <span class="date">{{ m.date|timesince }}</span><br>
+            {{ m.message }}
+        </div>
+        {% endwith %}
+    {% endfor %}
+    </div>
+    <div id="chat-input">
+        <input id="chat-message-input" type="text">
+        <input id="chat-message-submit" type="submit" value="Send">
+    </div>
+{% endblock %}
+{% block domready %}
+    var url = 'ws://' + window.location.host +
+                '/ws/chat/room/' + '{{ course.id }}/';
+    var chatSocket = new WebSocket(url);
+    var user, data;
+
+    chatSocket.onmessage = function(e) {
+        data = JSON.parse(e.data);
+        var message = data.message;
+
+        var dateOptions = {hour: 'numeric', minute: 'numeric', hour12:true};
+        // var datetime = new Date(data['datetime']).toLocaleString('en', dateOptions);
+        var datetime = "now"
+
+        user = data.user
+
+        console.log("onmessage")
+        var isMe = data.user === '{{ request.user }}';
+        var source = isMe ? 'me' : 'other';
+        var name = isMe ? 'Me': data.user;
+
+        var $chat = $('#chat');
+    $chat.append('<div class="message ' + source + '">' + '<strong>' + name + '</strong>' +
+    '<span class="date">' + datetime + '</span><br>' + message + '</div>')
+        $chat.scrollTop($chat[0].scrollHeight);
+    };
+
+    chatSocket.onclose = function(e) {
+        console.error('Chat socket closed unexpectedly');
+    };
+
+    var $input = $('#chat-message-input');
+    var $submit = $('#chat-message-submit');
+
+    $submit.click(function() {
+        var message = $input.val();
+        var isMe = false;
+
+        // A user can not sent two message at a time.
+{#        if (data){#}
+{#            isMe = data.user === '{{ request.user }}';#}
+{#            console.log(isMe)#}
+{#        }#}
+
+        if (message && !isMe) {
+             // Send message in JSON format
+             chatSocket.send(JSON.stringify({'message': message}))
+             $input.val('')
+        }
+    })
+
+    $input.focus()
+    $input.keyup(function(e) {
+        if(e.which === 13) {
+            $submit.click();
+        }
+    })
+{% endblock %}
+
+{#    {% for message in msg %}#}
+{#        {% with user=message.user %}#}
+{#            <div class="message{% if user == request.user %} me{% else %} other{% endif %}">#}
+{#                <strong>{{ user.username }}</strong>#}
+{#                <span class="date">today</span><br>#}
+{#                {{ message.message }}#}
+{#            </div>#}
+{#        {% endwith %}#}
+{#    {% endfor %}#}
